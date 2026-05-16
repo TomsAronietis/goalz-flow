@@ -32,7 +32,7 @@ function ProspectPage() {
   }, [p]);
 
   const update = useMutation({
-    mutationFn: async (patch: Record<string, unknown>) => {
+    mutationFn: async (patch: Partial<NonNullable<typeof p>>) => {
       const { error } = await supabase.from("prospects").update(patch).eq("id", id);
       if (error) throw error;
     },
