@@ -6,6 +6,7 @@ import { useSession } from "@/hooks/use-auth";
 import {
   STATUSES, STATUS_LABEL,
   useFollowUps, useMessages, useProfiles, useProspect, useSequences,
+  type ProspectStatus,
 } from "@/lib/queries";
 import { Badge, Button, Input, Label, Panel, PanelHeader, Select, Textarea } from "@/components/term";
 import { initials, smartDate, ymd } from "@/lib/format";
