@@ -3,19 +3,22 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
-import { useProfiles, useSequences } from "@/lib/queries";
+import { useCurrentAlliance } from "@/hooks/use-alliance";
+import { useSequences } from "@/lib/queries";
 import { Badge, Button, Input, Label, Panel, PanelHeader, Textarea } from "@/components/term";
+import { smartDate } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 });
 
 function SettingsPage() {
+  const { current } = useCurrentAlliance();
   return (
     <div className="p-4 max-w-5xl mx-auto space-y-4">
       <div>
         <div className="label">SETTINGS</div>
-        <h1 className="text-lg font-semibold mt-0.5">Workspace</h1>
+        <h1 className="text-lg font-semibold mt-0.5">{current?.name ?? "Workspace"}</h1>
       </div>
       <StrategySection />
       <MembersSection />
@@ -28,10 +31,18 @@ function SettingsPage() {
 function StrategySection() {
   const qc = useQueryClient();
   const { user } = useSession();
+  const { current } = useCurrentAlliance();
+  const allianceId = current?.alliance_id;
   const { data } = useQuery({
-    queryKey: ["settings", "outreach_strategy"],
+    queryKey: ["settings", "outreach_strategy", allianceId],
+    enabled: !!allianceId,
     queryFn: async () => {
-      const { data } = await supabase.from("settings").select("*").eq("key", "outreach_strategy").maybeSingle();
+      const { data } = await supabase
+        .from("settings")
+        .select("*")
+        .eq("alliance_id", allianceId!)
+        .eq("key", "outreach_strategy")
+        .maybeSingle();
       return data;
     },
   });
@@ -40,12 +51,17 @@ function StrategySection() {
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!allianceId) throw new Error("No active alliance.");
       const { error } = await supabase.from("settings").upsert({
-        key: "outreach_strategy", value: { text }, updated_by: user?.id ?? null, updated_at: new Date().toISOString(),
+        alliance_id: allianceId,
+        key: "outreach_strategy",
+        value: { text },
+        updated_by: user?.id ?? null,
+        updated_at: new Date().toISOString(),
       });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings", "outreach_strategy"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings", "outreach_strategy", allianceId] }),
   });
 
   return (
@@ -64,102 +80,177 @@ function StrategySection() {
 function MembersSection() {
   const qc = useQueryClient();
   const { user } = useSession();
-  const { data: profiles = [] } = useProfiles();
-  const { data: roles = [] } = useQuery({
-    queryKey: ["user_roles"],
+  const { current } = useCurrentAlliance();
+  const allianceId = current?.alliance_id;
+  const isOwner = current?.role === "owner";
+
+  const { data: members = [] } = useQuery({
+    queryKey: ["alliance_members", allianceId],
+    enabled: !!allianceId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("user_roles").select("*");
+      const { data, error } = await supabase
+        .from("alliance_members")
+        .select("user_id, role, joined_at, profiles(email, display_name)")
+        .eq("alliance_id", allianceId!);
       if (error) throw error;
-      return data;
-    },
-  });
-  const { data: allowed = [] } = useQuery({
-    queryKey: ["allowed_emails"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("allowed_emails").select("*").order("invited_at", { ascending: false });
-      if (error) return [];
-      return data;
+      return data ?? [];
     },
   });
 
-  const isOwner = roles.some((r) => r.user_id === user?.id && r.role === "owner");
+  const { data: invites = [] } = useQuery({
+    queryKey: ["alliance_invites", allianceId],
+    enabled: !!allianceId && isOwner,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("alliance_invites")
+        .select("*")
+        .eq("alliance_id", allianceId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const [email, setEmail] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   const invite = useMutation({
     mutationFn: async () => {
+      if (!allianceId) throw new Error("No active alliance.");
       const e = email.trim().toLowerCase();
       if (!e) throw new Error("Email required");
-      const { error: addErr } = await supabase.from("allowed_emails").upsert({
-        email: e, role: "member", invited_by: user?.id ?? null,
+      const { error } = await supabase.from("alliance_invites").insert({
+        alliance_id: allianceId,
+        email: e,
+        role: "member",
+        invited_by: user?.id ?? null,
       });
-      if (addErr) throw addErr;
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email: e, options: { emailRedirectTo: `${window.location.origin}/pipeline` },
-      });
-      if (otpErr) throw otpErr;
+      if (error) throw error;
     },
     onSuccess: () => {
       setEmail(""); setErr(null);
-      qc.invalidateQueries({ queryKey: ["allowed_emails"] });
+      qc.invalidateQueries({ queryKey: ["alliance_invites", allianceId] });
     },
     onError: (e: Error) => setErr(e.message),
   });
 
+  const revokeInvite = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("alliance_invites").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alliance_invites", allianceId] }),
+  });
+
   const removeMember = useMutation({
-    mutationFn: async (em: string) => {
-      const profile = profiles.find((p) => p.email === em);
-      if (profile) {
-        await supabase.from("user_roles").delete().eq("user_id", profile.id);
-      }
-      await supabase.from("allowed_emails").delete().eq("email", em);
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from("alliance_members")
+        .delete()
+        .eq("alliance_id", allianceId!)
+        .eq("user_id", userId);
+      if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["allowed_emails"] });
-      qc.invalidateQueries({ queryKey: ["user_roles"] });
+      qc.invalidateQueries({ queryKey: ["alliance_members", allianceId] });
       qc.invalidateQueries({ queryKey: ["profiles"] });
     },
   });
 
-  if (!isOwner) {
-    return (
-      <Panel>
-        <PanelHeader>MEMBERS</PanelHeader>
-        <div className="p-3 mono text-xs text-[var(--text-muted)]">Owner-only section.</div>
-      </Panel>
-    );
+  function inviteUrl(token: string) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return `${origin}/login?invite=${token}`;
+  }
+
+  async function copyLink(token: string) {
+    try {
+      await navigator.clipboard.writeText(inviteUrl(token));
+    } catch {
+      // ignore
+    }
   }
 
   return (
     <Panel>
-      <PanelHeader>MEMBERS</PanelHeader>
+      <PanelHeader>
+        <span>MEMBERS · {members.length}</span>
+        {!isOwner && <Badge variant="muted">VIEW ONLY</Badge>}
+      </PanelHeader>
       <div className="p-3 space-y-4">
-        <form onSubmit={(e) => { e.preventDefault(); invite.mutate(); }} className="flex gap-2">
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="invite@email.com" required />
-          <Button type="submit" variant="primary" disabled={invite.isPending}>
-            {invite.isPending ? "SENDING…" : "INVITE"}
-          </Button>
-        </form>
-        {err && <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2">{err}</div>}
-
         <div className="border border-[var(--border)]">
-          {allowed.map((a) => {
-            const profile = profiles.find((p) => p.email === a.email);
-            const role = roles.find((r) => r.user_id === profile?.id)?.role ?? a.role;
+          {members.map((m) => {
+            type ProfileRel = { email: string; display_name: string | null } | null;
+            const profile = (m as unknown as { profiles: ProfileRel }).profiles;
             return (
-              <div key={a.email} className="flex items-center gap-3 border-b border-[var(--border)] last:border-b-0 px-3 py-2">
-                <span className="mono text-sm flex-1">{a.email}</span>
-                <Badge variant={role === "owner" ? "accent" : "muted"}>{role.toUpperCase()}</Badge>
-                <Badge variant={profile ? "success" : "warning"}>{profile ? "ACTIVE" : "PENDING"}</Badge>
-                {role !== "owner" && (
-                  <button onClick={() => confirm(`Remove ${a.email}?`) && removeMember.mutate(a.email)} className="text-[var(--text-muted)] hover:text-[var(--danger)] text-xs">REMOVE</button>
+              <div key={m.user_id} className="flex items-center gap-3 border-b border-[var(--border)] last:border-b-0 px-3 py-2">
+                <span className="mono text-sm flex-1">{profile?.display_name || profile?.email || m.user_id.slice(0, 8)}</span>
+                <span className="mono text-[11px] text-[var(--text-muted)]">{profile?.email}</span>
+                <Badge variant={m.role === "owner" ? "accent" : "muted"}>{m.role.toUpperCase()}</Badge>
+                {isOwner && m.role !== "owner" && m.user_id !== user?.id && (
+                  <button
+                    onClick={() => confirm(`Remove ${profile?.email ?? "this member"}?`) && removeMember.mutate(m.user_id)}
+                    className="text-[var(--text-muted)] hover:text-[var(--danger)] text-xs"
+                  >
+                    REMOVE
+                  </button>
                 )}
               </div>
             );
           })}
-          {allowed.length === 0 && <div className="p-3 mono text-xs text-[var(--text-muted)]">No invites yet.</div>}
+          {members.length === 0 && <div className="p-3 mono text-xs text-[var(--text-muted)]">No members yet.</div>}
         </div>
+
+        {isOwner && (
+          <>
+            <form onSubmit={(e) => { e.preventDefault(); invite.mutate(); }} className="flex gap-2">
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="invite@email.com"
+                required
+              />
+              <Button type="submit" variant="primary" disabled={invite.isPending}>
+                {invite.isPending ? "CREATING…" : "+ INVITE"}
+              </Button>
+            </form>
+            {err && <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2">{err}</div>}
+
+            {invites.length > 0 && (
+              <div>
+                <div className="label mb-2">PENDING INVITES · {invites.filter((i) => !i.accepted_at).length}</div>
+                <div className="border border-[var(--border)]">
+                  {invites.map((i) => (
+                    <div key={i.id} className="flex items-center gap-3 border-b border-[var(--border)] last:border-b-0 px-3 py-2">
+                      <span className="mono text-sm flex-1 truncate">{i.email}</span>
+                      <Badge variant={i.accepted_at ? "success" : new Date(i.expires_at) < new Date() ? "danger" : "warning"}>
+                        {i.accepted_at ? "ACCEPTED" : new Date(i.expires_at) < new Date() ? "EXPIRED" : "PENDING"}
+                      </Badge>
+                      {!i.accepted_at && (
+                        <>
+                          <button
+                            onClick={() => copyLink(i.token)}
+                            className="mono text-[11px] text-[var(--accent)] hover:underline"
+                            title={inviteUrl(i.token)}
+                          >
+                            COPY LINK
+                          </button>
+                          <button
+                            onClick={() => revokeInvite.mutate(i.id)}
+                            className="text-[var(--text-muted)] hover:text-[var(--danger)] text-xs"
+                          >
+                            REVOKE
+                          </button>
+                        </>
+                      )}
+                      <span className="mono text-[10px] text-[var(--text-muted)]">{smartDate(i.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </Panel>
   );
@@ -168,12 +259,19 @@ function MembersSection() {
 function SequencesSection() {
   const qc = useQueryClient();
   const { user } = useSession();
+  const { current } = useCurrentAlliance();
+  const allianceId = current?.alliance_id;
   const { data: sequences = [] } = useSequences();
   const [name, setName] = useState("");
 
   const create = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("sequences").insert({ name, created_by: user?.id ?? null });
+      if (!allianceId) throw new Error("No active alliance.");
+      const { error } = await supabase.from("sequences").insert({
+        alliance_id: allianceId,
+        name,
+        created_by: user?.id ?? null,
+      });
       if (error) throw error;
     },
     onSuccess: () => { setName(""); qc.invalidateQueries({ queryKey: ["sequences"] }); },
