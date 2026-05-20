@@ -6,6 +6,7 @@ import { useSession } from "@/hooks/use-auth";
 import {
   STATUSES, STATUS_LABEL,
   useFollowUps, useMessages, useProfiles, useProspect, useSequences,
+  type ProspectStatus,
 } from "@/lib/queries";
 import { Badge, Button, Input, Label, Panel, PanelHeader, Select, Textarea } from "@/components/term";
 import { initials, smartDate, ymd } from "@/lib/format";
@@ -137,7 +138,7 @@ function ProspectPage() {
           <Cell label="LAST CONTACT" value={p.last_contacted_at ? smartDate(p.last_contacted_at) : "—"} />
           <div className="bg-[var(--surface)] p-3">
             <div className="label mb-1">STATUS</div>
-            <Select value={p.status} onChange={(e) => update.mutate({ status: e.target.value })}>
+            <Select value={p.status} onChange={(e) => update.mutate({ status: e.target.value as ProspectStatus })}>
               {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
             </Select>
           </div>
