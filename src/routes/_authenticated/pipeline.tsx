@@ -12,6 +12,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
+import { useCurrentAlliance } from "@/hooks/use-alliance";
 import {
   STATUSES,
   STATUS_LABEL,
@@ -193,6 +194,7 @@ function ProspectCard({
 function AddProspectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const { user } = useSession();
+  const { current } = useCurrentAlliance();
   const [igUrl, setIgUrl] = useState("");
   const [website, setWebsite] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -207,9 +209,11 @@ function AddProspectModal({ open, onClose }: { open: boolean; onClose: () => voi
 
   const create = useMutation({
     mutationFn: async () => {
+      if (!current) throw new Error("No active alliance.");
       const handle = parseIgHandle(igUrl);
       if (!handle) throw new Error("Could not parse Instagram handle from URL.");
       const { error } = await supabase.from("prospects").insert({
+        alliance_id: current.alliance_id,
         ig_handle: handle,
         ig_url: igUrl.trim(),
         website_url: website.trim() || null,

@@ -14,29 +14,103 @@ export type Database = {
   }
   public: {
     Tables: {
-      allowed_emails: {
+      alliance_invites: {
         Row: {
+          accepted_at: string | null
+          alliance_id: string
+          created_at: string
           email: string
-          invited_at: string
+          expires_at: string
+          id: string
           invited_by: string | null
-          role: Database["public"]["Enums"]["app_role"]
+          role: Database["public"]["Enums"]["alliance_role"]
+          token: string
         }
         Insert: {
+          accepted_at?: string | null
+          alliance_id: string
+          created_at?: string
           email: string
-          invited_at?: string
+          expires_at?: string
+          id?: string
           invited_by?: string | null
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: Database["public"]["Enums"]["alliance_role"]
+          token?: string
         }
         Update: {
+          accepted_at?: string | null
+          alliance_id?: string
+          created_at?: string
           email?: string
-          invited_at?: string
+          expires_at?: string
+          id?: string
           invited_by?: string | null
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: Database["public"]["Enums"]["alliance_role"]
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alliance_invites_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alliance_members: {
+        Row: {
+          alliance_id: string
+          joined_at: string
+          role: Database["public"]["Enums"]["alliance_role"]
+          user_id: string
+        }
+        Insert: {
+          alliance_id: string
+          joined_at?: string
+          role?: Database["public"]["Enums"]["alliance_role"]
+          user_id: string
+        }
+        Update: {
+          alliance_id?: string
+          joined_at?: string
+          role?: Database["public"]["Enums"]["alliance_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alliance_members_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alliances: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
         }
         Relationships: []
       }
       follow_ups: {
         Row: {
+          alliance_id: string
           assigned_to: string | null
           completed_at: string | null
           completed_by: string | null
@@ -50,6 +124,7 @@ export type Database = {
           sequence_step_id: string | null
         }
         Insert: {
+          alliance_id: string
           assigned_to?: string | null
           completed_at?: string | null
           completed_by?: string | null
@@ -63,6 +138,7 @@ export type Database = {
           sequence_step_id?: string | null
         }
         Update: {
+          alliance_id?: string
           assigned_to?: string | null
           completed_at?: string | null
           completed_by?: string | null
@@ -76,6 +152,13 @@ export type Database = {
           sequence_step_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "follow_ups_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "follow_ups_prospect_id_fkey"
             columns: ["prospect_id"]
@@ -94,6 +177,7 @@ export type Database = {
       }
       messages_log: {
         Row: {
+          alliance_id: string
           created_at: string
           created_by: string | null
           id: string
@@ -102,6 +186,7 @@ export type Database = {
           summary: string
         }
         Insert: {
+          alliance_id: string
           created_at?: string
           created_by?: string | null
           id?: string
@@ -110,6 +195,7 @@ export type Database = {
           summary?: string
         }
         Update: {
+          alliance_id?: string
           created_at?: string
           created_by?: string | null
           id?: string
@@ -118,6 +204,13 @@ export type Database = {
           summary?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "messages_log_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "messages_log_prospect_id_fkey"
             columns: ["prospect_id"]
@@ -150,6 +243,7 @@ export type Database = {
       }
       prospects: {
         Row: {
+          alliance_id: string
           applied_sequence_id: string | null
           assigned_to: string | null
           bio: string | null
@@ -172,6 +266,7 @@ export type Database = {
           website_url: string | null
         }
         Insert: {
+          alliance_id: string
           applied_sequence_id?: string | null
           assigned_to?: string | null
           bio?: string | null
@@ -194,6 +289,7 @@ export type Database = {
           website_url?: string | null
         }
         Update: {
+          alliance_id?: string
           applied_sequence_id?: string | null
           assigned_to?: string | null
           bio?: string | null
@@ -216,6 +312,13 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "prospects_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "prospects_applied_sequence_id_fkey"
             columns: ["applied_sequence_id"]
@@ -265,6 +368,7 @@ export type Database = {
       }
       sequences: {
         Row: {
+          alliance_id: string
           created_at: string
           created_by: string | null
           description: string | null
@@ -272,6 +376,7 @@ export type Database = {
           name: string
         }
         Insert: {
+          alliance_id: string
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -279,72 +384,77 @@ export type Database = {
           name: string
         }
         Update: {
+          alliance_id?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sequences_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       settings: {
         Row: {
+          alliance_id: string
           key: string
           updated_at: string
           updated_by: string | null
           value: Json
         }
         Insert: {
+          alliance_id: string
           key: string
           updated_at?: string
           updated_by?: string | null
           value?: Json
         }
         Update: {
+          alliance_id?: string
           key?: string
           updated_at?: string
           updated_by?: string | null
           value?: Json
         }
-        Relationships: []
-      }
-      user_roles: {
-        Row: {
-          created_at: string
-          id: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "settings_new_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      has_role: {
+      accept_alliance_invite: { Args: { _token: string }; Returns: string }
+      has_alliance_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
+          _alliance_id: string
+          _role: Database["public"]["Enums"]["alliance_role"]
           _user_id: string
         }
         Returns: boolean
       }
-      is_member: { Args: { _user_id: string }; Returns: boolean }
+      is_alliance_member: {
+        Args: { _alliance_id: string; _user_id: string }
+        Returns: boolean
+      }
+      user_alliance_ids: { Args: { _user_id: string }; Returns: string[] }
     }
     Enums: {
-      app_role: "owner" | "member"
+      alliance_role: "owner" | "member"
       prospect_status:
         | "researched"
         | "dm_sent"
@@ -478,7 +588,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["owner", "member"],
+      alliance_role: ["owner", "member"],
       prospect_status: [
         "researched",
         "dm_sent",

@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
+import { useCurrentAlliance } from "@/hooks/use-alliance";
 import {
   STATUSES, STATUS_LABEL,
   useFollowUps, useMessages, useProfiles, useProspect, useSequences,
   type ProspectStatus,
 } from "@/lib/queries";
 import { Badge, Button, Input, Label, Panel, PanelHeader, Select, Textarea } from "@/components/term";
-import { initials, smartDate, ymd } from "@/lib/format";
+import { smartDate, ymd } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/prospects/$id")({
   component: ProspectPage,
@@ -20,6 +21,7 @@ function ProspectPage() {
   const qc = useQueryClient();
   const nav = useNavigate();
   const { user } = useSession();
+  const { current } = useCurrentAlliance();
   const { data: p, isLoading } = useProspect(id);
   const { data: followUps = [] } = useFollowUps(id);
   const { data: messages = [] } = useMessages(id);
@@ -45,7 +47,9 @@ function ProspectPage() {
 
   const logDm = useMutation({
     mutationFn: async () => {
+      if (!current) throw new Error("No active alliance.");
       const { error } = await supabase.from("messages_log").insert({
+        alliance_id: current.alliance_id,
         prospect_id: id, summary: "DM sent", created_by: user?.id ?? null,
       });
       if (error) throw error;
@@ -59,12 +63,14 @@ function ProspectPage() {
 
   const applySequence = useMutation({
     mutationFn: async (sequenceId: string) => {
+      if (!current) throw new Error("No active alliance.");
       const seq = sequences.find((s) => s.id === sequenceId);
       if (!seq) throw new Error("Sequence not found");
       const start = new Date();
       const rows = (seq.sequence_steps ?? []).map((s) => {
         const d = new Date(start); d.setDate(d.getDate() + s.day_offset);
         return {
+          alliance_id: current.alliance_id,
           prospect_id: id, sequence_step_id: s.id, due_date: ymd(d),
           instructions: s.instructions, link_urls: s.link_urls,
           assigned_to: p?.assigned_to ?? user?.id ?? null, order_index: s.order_index,
@@ -184,7 +190,6 @@ function ProspectPage() {
             </Panel>
           )}
 
-          {/* Message log */}
           <Panel>
             <PanelHeader>MESSAGE LOG · {messages.length}</PanelHeader>
             <div>
@@ -259,7 +264,7 @@ function ProspectPage() {
                   )}
                 </div>
               ))}
-              <AddFollowUp prospectId={id} assignedTo={p.assigned_to ?? user?.id ?? null} />
+              <AddFollowUp prospectId={id} assignedTo={p.assigned_to ?? user?.id ?? null} allianceId={current?.alliance_id ?? null} />
             </div>
           </Panel>
         </div>
@@ -323,7 +328,7 @@ function ApplySequence({ sequences, onApply }: { sequences: { id: string; name: 
   );
 }
 
-function AddFollowUp({ prospectId, assignedTo }: { prospectId: string; assignedTo: string | null }) {
+function AddFollowUp({ prospectId, assignedTo, allianceId }: { prospectId: string; assignedTo: string | null; allianceId: string | null }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [due, setDue] = useState(ymd(new Date()));
@@ -331,7 +336,9 @@ function AddFollowUp({ prospectId, assignedTo }: { prospectId: string; assignedT
   const [links, setLinks] = useState("");
   const add = useMutation({
     mutationFn: async () => {
+      if (!allianceId) throw new Error("No active alliance.");
       const { error } = await supabase.from("follow_ups").insert({
+        alliance_id: allianceId,
         prospect_id: prospectId, due_date: due, instructions: instr,
         link_urls: links.split("\n").map((l) => l.trim()).filter(Boolean),
         assigned_to: assignedTo,
