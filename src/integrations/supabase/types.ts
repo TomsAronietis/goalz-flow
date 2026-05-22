@@ -439,6 +439,7 @@ export type Database = {
     }
     Functions: {
       accept_alliance_invite: { Args: { _token: string }; Returns: string }
+      create_alliance: { Args: { _name: string }; Returns: string }
       has_alliance_role: {
         Args: {
           _alliance_id: string
