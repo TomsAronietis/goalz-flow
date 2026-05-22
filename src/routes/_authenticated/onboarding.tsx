@@ -21,17 +21,9 @@ function OnboardingPage() {
   const create = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Not signed in");
-      const { data, error } = await supabase
-        .from("alliances")
-        .insert({ name: name.trim(), created_by: user.id })
-        .select("id")
-        .single();
+      const { data, error } = await supabase.rpc("create_alliance", { _name: name.trim() });
       if (error) throw error;
-      const { error: mErr } = await supabase
-        .from("alliance_members")
-        .insert({ alliance_id: data.id, user_id: user.id, role: "owner" });
-      if (mErr) throw mErr;
-      return data.id;
+      return data as string;
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["my_alliances"] });
