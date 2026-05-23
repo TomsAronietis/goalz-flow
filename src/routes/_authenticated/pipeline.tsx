@@ -24,6 +24,7 @@ import {
 } from "@/lib/queries";
 import { Badge, Button, Input, Label, Modal, Panel, Select, Textarea } from "@/components/term";
 import { initials, parseIgHandle, smartDate } from "@/lib/format";
+import { ImportProspectsModal } from "@/components/import-prospects-modal";
 
 export const Route = createFileRoute("/_authenticated/pipeline")({
   component: PipelinePage,
