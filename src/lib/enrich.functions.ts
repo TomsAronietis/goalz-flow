@@ -173,7 +173,7 @@ ${siteText || "(none)"}`;
     if (e.intel_brief) patch.intel_brief = e.intel_brief;
     if (e.website_gaps) patch.website_gaps = e.website_gaps;
 
-    const { error: uErr } = await supabase.from("prospects").update(patch).eq("id", data.prospectId);
+    const { error: uErr } = await supabase.from("prospects").update(patch as never).eq("id", data.prospectId);
     if (uErr) throw new Error(uErr.message);
 
     return { ok: true };
