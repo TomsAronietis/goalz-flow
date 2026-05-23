@@ -36,6 +36,7 @@ function PipelinePage() {
   const { data: followUps = [] } = useFollowUps();
   const { data: profiles = [] } = useProfiles();
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const nav = useNavigate();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
