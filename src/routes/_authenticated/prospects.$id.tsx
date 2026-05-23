@@ -144,8 +144,27 @@ function ProspectPage() {
     <div className="p-4 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <Link to="/pipeline" className="mono text-xs text-[var(--text-muted)] hover:text-[var(--text)]">← PIPELINE</Link>
-        <Button variant="danger" size="sm" onClick={() => confirm("Delete prospect?") && deleteProspect.mutate()}>DELETE</Button>
+        <div className="flex gap-2 items-center">
+          {p.enriched_at && (
+            <span className="mono text-[10px] text-[var(--text-muted)]">ENRICHED {smartDate(p.enriched_at)}</span>
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => enrich.mutate()}
+            disabled={enrich.isPending}
+            title="Scrapes IG + website, fills empty fields via AI"
+          >
+            {enrich.isPending ? "ENRICHING…" : (p.enriched_at ? "RE-ENRICH" : "✨ AUTO-ENRICH")}
+          </Button>
+          <Button variant="danger" size="sm" onClick={() => confirm("Delete prospect?") && deleteProspect.mutate()}>DELETE</Button>
+        </div>
       </div>
+      {enrich.isError && (
+        <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2 mb-3">
+          {(enrich.error as Error).message}
+        </div>
+      )}
 
       {/* Header strip */}
       <Panel className="mb-4">
