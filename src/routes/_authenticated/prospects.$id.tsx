@@ -121,6 +121,17 @@ function ProspectPage() {
     },
   });
 
+  const enrichFn = useServerFn(enrichProspect);
+  const enrich = useMutation({
+    mutationFn: async () => {
+      await enrichFn({ data: { prospectId: id } });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      qc.invalidateQueries({ queryKey: ["prospects", id] });
+    },
+  });
+
   if (isLoading || !p) {
     return <div className="p-6 mono text-xs text-[var(--text-muted)]">LOADING…</div>;
   }
