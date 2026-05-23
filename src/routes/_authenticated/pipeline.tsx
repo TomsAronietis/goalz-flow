@@ -115,6 +115,7 @@ function PipelinePage() {
       </DndContext>
 
       <AddProspectModal open={adding} onClose={() => setAdding(false)} />
+      <ImportProspectsModal open={importing} onClose={() => setImporting(false)} />
     </div>
   );
 }
