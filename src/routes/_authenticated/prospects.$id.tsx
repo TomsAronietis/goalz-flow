@@ -201,6 +201,32 @@ function ProspectPage() {
             </Button>
           </div>
         </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[var(--border)] border-t border-[var(--border)]">
+          <Cell label="NICHE" value={p.niche} />
+          <Cell label="BROKERAGE" value={p.brokerage} />
+          <Cell label="EMAIL" value={p.email} link={p.email ? `mailto:${p.email}` : null} />
+          <Cell label="PHONE" value={p.phone} link={p.phone ? `tel:${p.phone}` : null} />
+        </div>
+        {(p.awards?.length || p.press_mentions?.length) ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[var(--border)] border-t border-[var(--border)]">
+            <div className="bg-[var(--surface)] p-3">
+              <div className="label mb-1">AWARDS</div>
+              {p.awards?.length ? (
+                <ul className="mono text-xs text-[var(--text-dim)] space-y-0.5">
+                  {p.awards.map((a, i) => <li key={i}>• {a}</li>)}
+                </ul>
+              ) : <div className="mono text-sm text-[var(--text-muted)]">—</div>}
+            </div>
+            <div className="bg-[var(--surface)] p-3">
+              <div className="label mb-1">PRESS MENTIONS</div>
+              {p.press_mentions?.length ? (
+                <ul className="mono text-xs text-[var(--text-dim)] space-y-0.5">
+                  {p.press_mentions.map((m, i) => <li key={i}>• {m}</li>)}
+                </ul>
+              ) : <div className="mono text-sm text-[var(--text-muted)]">—</div>}
+            </div>
+          </div>
+        ) : null}
       </Panel>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
