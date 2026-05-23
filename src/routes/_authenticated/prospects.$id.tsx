@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { enrichProspect } from "@/lib/enrich.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
 import { useCurrentAlliance } from "@/hooks/use-alliance";
@@ -119,6 +121,17 @@ function ProspectPage() {
     },
   });
 
+  const enrichFn = useServerFn(enrichProspect);
+  const enrich = useMutation({
+    mutationFn: async () => {
+      await enrichFn({ data: { prospectId: id } });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      qc.invalidateQueries({ queryKey: ["prospects", id] });
+    },
+  });
+
   if (isLoading || !p) {
     return <div className="p-6 mono text-xs text-[var(--text-muted)]">LOADING…</div>;
   }
@@ -131,8 +144,27 @@ function ProspectPage() {
     <div className="p-4 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <Link to="/pipeline" className="mono text-xs text-[var(--text-muted)] hover:text-[var(--text)]">← PIPELINE</Link>
-        <Button variant="danger" size="sm" onClick={() => confirm("Delete prospect?") && deleteProspect.mutate()}>DELETE</Button>
+        <div className="flex gap-2 items-center">
+          {p.enriched_at && (
+            <span className="mono text-[10px] text-[var(--text-muted)]">ENRICHED {smartDate(p.enriched_at)}</span>
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => enrich.mutate()}
+            disabled={enrich.isPending}
+            title="Scrapes IG + website, fills empty fields via AI"
+          >
+            {enrich.isPending ? "ENRICHING…" : (p.enriched_at ? "RE-ENRICH" : "✨ AUTO-ENRICH")}
+          </Button>
+          <Button variant="danger" size="sm" onClick={() => confirm("Delete prospect?") && deleteProspect.mutate()}>DELETE</Button>
+        </div>
       </div>
+      {enrich.isError && (
+        <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2 mb-3">
+          {(enrich.error as Error).message}
+        </div>
+      )}
 
       {/* Header strip */}
       <Panel className="mb-4">
@@ -169,6 +201,32 @@ function ProspectPage() {
             </Button>
           </div>
         </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[var(--border)] border-t border-[var(--border)]">
+          <Cell label="NICHE" value={p.niche} />
+          <Cell label="BROKERAGE" value={p.brokerage} />
+          <Cell label="EMAIL" value={p.email} link={p.email ? `mailto:${p.email}` : null} />
+          <Cell label="PHONE" value={p.phone} link={p.phone ? `tel:${p.phone}` : null} />
+        </div>
+        {(p.awards?.length || p.press_mentions?.length) ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[var(--border)] border-t border-[var(--border)]">
+            <div className="bg-[var(--surface)] p-3">
+              <div className="label mb-1">AWARDS</div>
+              {p.awards?.length ? (
+                <ul className="mono text-xs text-[var(--text-dim)] space-y-0.5">
+                  {p.awards.map((a, i) => <li key={i}>• {a}</li>)}
+                </ul>
+              ) : <div className="mono text-sm text-[var(--text-muted)]">—</div>}
+            </div>
+            <div className="bg-[var(--surface)] p-3">
+              <div className="label mb-1">PRESS MENTIONS</div>
+              {p.press_mentions?.length ? (
+                <ul className="mono text-xs text-[var(--text-dim)] space-y-0.5">
+                  {p.press_mentions.map((m, i) => <li key={i}>• {m}</li>)}
+                </ul>
+              ) : <div className="mono text-sm text-[var(--text-muted)]">—</div>}
+            </div>
+          </div>
+        ) : null}
       </Panel>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

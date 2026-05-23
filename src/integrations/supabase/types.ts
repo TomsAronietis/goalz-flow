@@ -246,10 +246,14 @@ export type Database = {
           alliance_id: string
           applied_sequence_id: string | null
           assigned_to: string | null
+          awards: string[]
           bio: string | null
+          brokerage: string | null
           created_at: string
           created_by: string | null
           dm_copy: string | null
+          email: string | null
+          enriched_at: string | null
           first_name: string | null
           follower_count: number | null
           id: string
@@ -258,7 +262,10 @@ export type Database = {
           intel_brief: string | null
           last_contacted_at: string | null
           location: string | null
+          niche: string | null
           notes: string | null
+          phone: string | null
+          press_mentions: string[]
           sequence_started_at: string | null
           status: Database["public"]["Enums"]["prospect_status"]
           updated_at: string
@@ -269,10 +276,14 @@ export type Database = {
           alliance_id: string
           applied_sequence_id?: string | null
           assigned_to?: string | null
+          awards?: string[]
           bio?: string | null
+          brokerage?: string | null
           created_at?: string
           created_by?: string | null
           dm_copy?: string | null
+          email?: string | null
+          enriched_at?: string | null
           first_name?: string | null
           follower_count?: number | null
           id?: string
@@ -281,7 +292,10 @@ export type Database = {
           intel_brief?: string | null
           last_contacted_at?: string | null
           location?: string | null
+          niche?: string | null
           notes?: string | null
+          phone?: string | null
+          press_mentions?: string[]
           sequence_started_at?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string
@@ -292,10 +306,14 @@ export type Database = {
           alliance_id?: string
           applied_sequence_id?: string | null
           assigned_to?: string | null
+          awards?: string[]
           bio?: string | null
+          brokerage?: string | null
           created_at?: string
           created_by?: string | null
           dm_copy?: string | null
+          email?: string | null
+          enriched_at?: string | null
           first_name?: string | null
           follower_count?: number | null
           id?: string
@@ -304,7 +322,10 @@ export type Database = {
           intel_brief?: string | null
           last_contacted_at?: string | null
           location?: string | null
+          niche?: string | null
           notes?: string | null
+          phone?: string | null
+          press_mentions?: string[]
           sequence_started_at?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string

@@ -24,6 +24,7 @@ import {
 } from "@/lib/queries";
 import { Badge, Button, Input, Label, Modal, Panel, Select, Textarea } from "@/components/term";
 import { initials, parseIgHandle, smartDate } from "@/lib/format";
+import { ImportProspectsModal } from "@/components/import-prospects-modal";
 
 export const Route = createFileRoute("/_authenticated/pipeline")({
   component: PipelinePage,
@@ -35,6 +36,7 @@ function PipelinePage() {
   const { data: followUps = [] } = useFollowUps();
   const { data: profiles = [] } = useProfiles();
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const nav = useNavigate();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -91,7 +93,10 @@ function PipelinePage() {
           <div className="label">PIPELINE</div>
           <h1 className="text-lg font-semibold mt-0.5">{prospects.length} prospects</h1>
         </div>
-        <Button variant="primary" onClick={() => setAdding(true)}>+ ADD PROSPECT</Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setImporting(true)}>IMPORT CSV/XLSX</Button>
+          <Button variant="primary" onClick={() => setAdding(true)}>+ ADD PROSPECT</Button>
+        </div>
       </div>
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -110,6 +115,7 @@ function PipelinePage() {
       </DndContext>
 
       <AddProspectModal open={adding} onClose={() => setAdding(false)} />
+      <ImportProspectsModal open={importing} onClose={() => setImporting(false)} />
     </div>
   );
 }
