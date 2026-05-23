@@ -93,7 +93,10 @@ function PipelinePage() {
           <div className="label">PIPELINE</div>
           <h1 className="text-lg font-semibold mt-0.5">{prospects.length} prospects</h1>
         </div>
-        <Button variant="primary" onClick={() => setAdding(true)}>+ ADD PROSPECT</Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setImporting(true)}>IMPORT CSV/XLSX</Button>
+          <Button variant="primary" onClick={() => setAdding(true)}>+ ADD PROSPECT</Button>
+        </div>
       </div>
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
