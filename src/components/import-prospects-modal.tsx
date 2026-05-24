@@ -225,17 +225,79 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
             </div>
           </>
         )}
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose(); }} title="IMPORT PROSPECTS">
+      <div className="space-y-4">
+        {summary ? (
+          <div className="space-y-2">
+            <div className="mono text-sm text-[var(--accent)]">✓ IMPORT COMPLETE</div>
+            <div className="mono text-xs text-[var(--text-dim)] space-y-0.5">
+              <div>+ {summary.inserted} new prospect{summary.inserted === 1 ? "" : "s"} inserted</div>
+              <div>↻ {summary.updated} existing prospect{summary.updated === 1 ? "" : "s"} updated (empty fields only)</div>
+              {summary.skipped > 0 && <div className="text-[var(--text-muted)]">— {summary.skipped} row{summary.skipped === 1 ? "" : "s"} skipped (no IG handle)</div>}
+            </div>
+          </div>
+        ) : rows.length === 0 ? (
+          <div>
+            <Label>CSV OR EXCEL FILE</Label>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+              className="block w-full mono text-xs text-[var(--text)] file:mr-3 file:py-1.5 file:px-3 file:border file:border-[var(--border-strong)] file:bg-[var(--surface-2)] file:text-[var(--text)] file:mono file:text-xs file:cursor-pointer"
+            />
+            <div className="mono text-[11px] text-[var(--text-muted)] mt-2">
+              Required: a column with the Instagram URL or @handle.
+              Existing prospects with the same handle in this alliance will be updated (empty fields only), not duplicated.
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mono text-xs text-[var(--text-muted)]">
+              {fileName} · {rows.length} rows · map columns:
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {FIELDS.map((f) => (
+                <div key={f.key} className="grid grid-cols-2 gap-2 items-center">
+                  <Label className="mb-0">{f.label}</Label>
+                  <Select
+                    value={mapping[f.key] ?? ""}
+                    onChange={(e) => setMapping({ ...mapping, [f.key]: e.target.value })}
+                  >
+                    <option value="">— skip —</option>
+                    {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </Select>
+                </div>
+              ))}
+            </div>
+            <div className="border border-[var(--border)] p-2 max-h-32 overflow-auto">
+              <div className="label mb-1">PREVIEW (first 3)</div>
+              {rows.slice(0, 3).map((r, i) => (
+                <div key={i} className="mono text-[10px] text-[var(--text-dim)] truncate">
+                  {mapping.ig_url ? r[mapping.ig_url] : "—"}
+                  {mapping.first_name ? ` · ${r[mapping.first_name]}` : ""}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         {err && <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2">{err}</div>}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={() => { reset(); onClose(); }}>CANCEL</Button>
-          {rows.length > 0 && (
-            <Button
-              variant="primary"
-              onClick={() => importMut.mutate()}
-              disabled={importMut.isPending || !mapping.ig_url}
-            >
-              {importMut.isPending ? "IMPORTING…" : `IMPORT ${rows.length}`}
-            </Button>
+          {summary ? (
+            <Button variant="primary" onClick={() => { reset(); onClose(); }}>DONE</Button>
+          ) : (
+            <>
+              <Button type="button" variant="ghost" onClick={() => { reset(); onClose(); }}>CANCEL</Button>
+              {rows.length > 0 && (
+                <Button
+                  variant="primary"
+                  onClick={() => importMut.mutate()}
+                  disabled={importMut.isPending || !mapping.ig_url}
+                >
+                  {importMut.isPending ? "IMPORTING…" : `IMPORT ${rows.length}`}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
