@@ -5,6 +5,8 @@ import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
 import { useCurrentAlliance } from "@/hooks/use-alliance";
+import { ensurePipelineStages } from "@/lib/pipeline-stages";
+import { usePipelineStages } from "@/lib/queries";
 import { Button, Label, Modal, Select } from "@/components/term";
 import { parseIgHandle } from "@/lib/format";
 
@@ -27,6 +29,7 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
   const qc = useQueryClient();
   const { user } = useSession();
   const { current } = useCurrentAlliance();
+  const { data: stages = [] } = usePipelineStages(current?.alliance_id);
   const [rows, setRows] = useState<Row[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
@@ -134,6 +137,8 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
       const existingByHandle = new Map((existing ?? []).map((p) => [p.ig_handle.toLowerCase(), p]));
 
       // 3. Split into inserts (new) and updates (existing — only fill empty fields).
+      const ensuredStages = stages.length > 0 ? stages : await ensurePipelineStages(current.alliance_id);
+      const defaultStage = ensuredStages[0];
       const inserts: Record<string, unknown>[] = [];
       const updates: { id: string; patch: Record<string, unknown> }[] = [];
       for (const [handle, row] of byHandle) {
@@ -142,6 +147,7 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
           inserts.push({
             ...row,
             alliance_id: current.alliance_id,
+            stage_id: defaultStage?.id ?? null,
             created_by: user?.id ?? null,
             assigned_to: user?.id ?? null,
           });

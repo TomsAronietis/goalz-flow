@@ -9,18 +9,18 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
 import { useCurrentAlliance } from "@/hooks/use-alliance";
+import { ensurePipelineStages } from "@/lib/pipeline-stages";
 import {
-  STATUSES,
-  STATUS_LABEL,
   useFollowUps,
+  usePipelineStages,
   useProfiles,
   useProspects,
+  type PipelineStage,
   type Prospect,
-  type ProspectStatus,
 } from "@/lib/queries";
 import { Badge, Button, Input, Label, Modal, Panel, Select, Textarea } from "@/components/term";
 import { initials, parseIgHandle, smartDate } from "@/lib/format";
@@ -33,21 +33,46 @@ export const Route = createFileRoute("/_authenticated/pipeline")({
 function PipelinePage() {
   const qc = useQueryClient();
   const { data: prospects = [] } = useProspects();
+  const { current } = useCurrentAlliance();
+  const { data: stages = [] } = usePipelineStages(current?.alliance_id);
   const { data: followUps = [] } = useFollowUps();
   const { data: profiles = [] } = useProfiles();
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [newStage, setNewStage] = useState("");
   const nav = useNavigate();
+
+  useEffect(() => {
+    async function ensureDefaultStages() {
+      if (!current || stages.length > 0) return;
+      await ensurePipelineStages(current.alliance_id);
+      qc.invalidateQueries({ queryKey: ["pipeline_stages", current.alliance_id] });
+    }
+    ensureDefaultStages();
+  }, [current, stages.length, qc]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  const filteredProspects = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return prospects;
+    return prospects.filter((p) => {
+      const hay = [p.ig_handle, p.first_name, p.location, p.bio, p.notes, p.email, p.niche, p.brokerage]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (hay.includes(needle)) return true;
+      return needle.split(/\s+/).every((token) => hay.includes(token));
+    });
+  }, [prospects, search]);
+
   const grouped = useMemo(() => {
-    const out: Record<ProspectStatus, Prospect[]> = {
-      researched: [], dm_sent: [], responded: [], call_booked: [], closed: [],
-    };
-    for (const p of prospects) out[p.status].push(p);
+    const out: Record<string, Prospect[]> = {};
+    for (const stage of stages) out[stage.id] = [];
+    for (const p of filteredProspects) if (p.stage_id && out[p.stage_id]) out[p.stage_id].push(p);
     return out;
-  }, [prospects]);
+  }, [filteredProspects, stages]);
 
   const overdueByProspect = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -60,30 +85,53 @@ function PipelinePage() {
     return map;
   }, [followUps]);
 
-  const setStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: ProspectStatus }) => {
-      const { error } = await supabase.from("prospects").update({ status }).eq("id", id);
+  const setStage = useMutation({
+    mutationFn: async ({ id, stageId }: { id: string; stageId: string }) => {
+      const { error } = await supabase.from("prospects").update({ stage_id: stageId }).eq("id", id);
       if (error) throw error;
     },
-    onMutate: async ({ id, status }) => {
-      await qc.cancelQueries({ queryKey: ["prospects"] });
-      const prev = qc.getQueryData<Prospect[]>(["prospects"]);
-      qc.setQueryData<Prospect[]>(["prospects"], (cur) =>
-        cur?.map((p) => (p.id === id ? { ...p, status } : p)) ?? [],
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(["prospects"], ctx.prev),
     onSettled: () => qc.invalidateQueries({ queryKey: ["prospects"] }),
+  });
+
+  const createStage = useMutation({
+    mutationFn: async () => {
+      if (!current || !newStage.trim()) return;
+      const { error } = await supabase.from("pipeline_stages").insert({
+        alliance_id: current.alliance_id,
+        name: newStage.trim(),
+        order_index: stages.length,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => { setNewStage(""); qc.invalidateQueries({ queryKey: ["pipeline_stages", current?.alliance_id ?? "none"] }); },
+  });
+
+  const renameStage = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const { error } = await supabase.from("pipeline_stages").update({ name }).eq("id", id);
+      if (error) throw error;
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["pipeline_stages", current?.alliance_id ?? "none"] }),
+  });
+
+  const deleteStage = useMutation({
+    mutationFn: async (stage: PipelineStage) => {
+      const fallback = stages.find((s) => s.id !== stage.id);
+      if (!fallback) throw new Error("At least one stage is required.");
+      await supabase.from("prospects").update({ stage_id: fallback.id }).eq("stage_id", stage.id);
+      const { error } = await supabase.from("pipeline_stages").delete().eq("id", stage.id);
+      if (error) throw error;
+    },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ["pipeline_stages", current?.alliance_id ?? "none"] }); qc.invalidateQueries({ queryKey: ["prospects"] }); },
   });
 
   function onDragEnd(e: DragEndEvent) {
     const id = String(e.active.id);
-    const status = e.over?.id as ProspectStatus | undefined;
-    if (!status) return;
+    const stageId = e.over?.id as string | undefined;
+    if (!stageId) return;
     const p = prospects.find((x) => x.id === id);
-    if (!p || p.status === status) return;
-    setStatus.mutate({ id, status });
+    if (!p || p.stage_id === stageId) return;
+    setStage.mutate({ id, stageId });
   }
 
   return (
@@ -98,16 +146,25 @@ function PipelinePage() {
           <Button variant="primary" onClick={() => setAdding(true)}>+ ADD PROSPECT</Button>
         </div>
       </div>
+      <div className="flex gap-2 mb-3">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Smart search (handle, name, niche, notes, bio...)" />
+      </div>
+      <div className="flex gap-2 mb-4">
+        <Input value={newStage} onChange={(e) => setNewStage(e.target.value)} placeholder="Add pipeline stage (e.g. Send DM)" />
+        <Button onClick={() => createStage.mutate()} disabled={!newStage.trim()}>ADD STAGE</Button>
+      </div>
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-          {STATUSES.map((s) => (
+          {stages.map((s) => (
             <Column
-              key={s}
-              status={s}
-              prospects={grouped[s]}
+              key={s.id}
+              stage={s}
+              prospects={grouped[s.id] ?? []}
               overdueByProspect={overdueByProspect}
               profiles={profiles}
+              onRename={(name) => renameStage.mutate({ id: s.id, name })}
+              onDelete={() => deleteStage.mutate(s)}
               onClick={(id) => nav({ to: "/prospects/$id", params: { id } })}
             />
           ))}
@@ -121,20 +178,22 @@ function PipelinePage() {
 }
 
 function Column({
-  status, prospects, overdueByProspect, profiles, onClick,
+  stage, prospects, overdueByProspect, profiles, onRename, onDelete, onClick,
 }: {
-  status: ProspectStatus;
+  stage: PipelineStage;
   prospects: Prospect[];
   overdueByProspect: Map<string, number>;
   profiles: { id: string; email: string; display_name: string | null }[];
+  onRename: (name: string) => void;
+  onDelete: () => void;
   onClick: (id: string) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
+  const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   return (
     <div ref={setNodeRef} className={`border ${isOver ? "border-[var(--accent)]" : "border-[var(--border)]"} bg-[var(--surface)]`}>
-      <div className="label flex items-center justify-between px-3 py-2 border-b border-[var(--border)]">
-        <span className="text-[var(--text)]">{STATUS_LABEL[status]}</span>
-        <span className="text-[var(--text-muted)]">{prospects.length}</span>
+      <div className="label flex items-center justify-between px-3 py-2 border-b border-[var(--border)] gap-2">
+        <input className="bg-transparent text-[var(--text)] w-full" value={stage.name} onChange={(e) => onRename(e.target.value)} />
+        <button className="text-[var(--danger)]" onClick={onDelete}>×</button>
       </div>
       <div className="p-2 space-y-2 min-h-[120px]">
         {prospects.map((p) => (
@@ -151,56 +210,11 @@ function Column({
   );
 }
 
-function ProspectCard({
-  prospect, overdue, profile, onClick,
-}: {
-  prospect: Prospect;
-  overdue: number;
-  profile?: { email: string; display_name: string | null };
-  onClick: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: prospect.id });
-  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      onClick={onClick}
-      className={`group cursor-pointer border border-[var(--border-strong)] bg-[var(--surface-2)] p-2.5 hover:border-[var(--accent)] ${isDragging ? "opacity-50" : ""}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="mono text-sm text-[var(--text)] truncate">@{prospect.ig_handle}</div>
-        {overdue > 0 && <Badge variant="danger">{overdue} OVERDUE</Badge>}
-      </div>
-      {prospect.first_name && (
-        <div className="text-xs text-[var(--text-dim)] mt-0.5 truncate">{prospect.first_name}</div>
-      )}
-      <div className="mono text-[10px] text-[var(--text-muted)] mt-2 flex flex-wrap gap-x-3 gap-y-0.5">
-        {prospect.location && <span>{prospect.location}</span>}
-        {prospect.follower_count != null && <span>{prospect.follower_count.toLocaleString()} FLW</span>}
-      </div>
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border)]">
-        <span className="mono text-[10px] text-[var(--text-muted)]">
-          {prospect.last_contacted_at
-            ? `LAST: ${smartDate(prospect.last_contacted_at)}`
-            : `ADDED ${smartDate(prospect.created_at)}`}
-        </span>
-        {profile && (
-          <span className="mono text-[10px] text-[var(--text-dim)] border border-[var(--border)] px-1.5 py-0.5">
-            {initials(profile.display_name, profile.email)}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function AddProspectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const { user } = useSession();
   const { current } = useCurrentAlliance();
+  const { data: stages = [] } = usePipelineStages(current?.alliance_id);
   const [igUrl, setIgUrl] = useState("");
   const [website, setWebsite] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -218,8 +232,11 @@ function AddProspectModal({ open, onClose }: { open: boolean; onClose: () => voi
       if (!current) throw new Error("No active alliance.");
       const handle = parseIgHandle(igUrl);
       if (!handle) throw new Error("Could not parse Instagram handle from URL.");
+      const ensuredStages = stages.length > 0 ? stages : await ensurePipelineStages(current.alliance_id);
+      const defaultStage = ensuredStages[0];
       const { error } = await supabase.from("prospects").insert({
         alliance_id: current.alliance_id,
+        stage_id: defaultStage?.id ?? null,
         ig_handle: handle,
         ig_url: igUrl.trim(),
         website_url: website.trim() || null,

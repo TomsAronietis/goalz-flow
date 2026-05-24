@@ -8,6 +8,7 @@ export type Sequence = Database["public"]["Tables"]["sequences"]["Row"];
 export type SequenceStep = Database["public"]["Tables"]["sequence_steps"]["Row"];
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type ProspectStatus = Database["public"]["Enums"]["prospect_status"];
+export type PipelineStage = Database["public"]["Tables"]["pipeline_stages"]["Row"];
 
 export const STATUSES: ProspectStatus[] = [
   "researched",
@@ -16,6 +17,7 @@ export const STATUSES: ProspectStatus[] = [
   "call_booked",
   "closed",
 ];
+
 export const STATUS_LABEL: Record<ProspectStatus, string> = {
   researched: "RESEARCHED",
   dm_sent: "DM SENT",
@@ -23,6 +25,22 @@ export const STATUS_LABEL: Record<ProspectStatus, string> = {
   call_booked: "CALL BOOKED",
   closed: "CLOSED",
 };
+
+export function usePipelineStages(allianceId?: string) {
+  return useQuery({
+    queryKey: ["pipeline_stages", allianceId ?? "none"],
+    enabled: !!allianceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pipeline_stages")
+        .select("*")
+        .eq("alliance_id", allianceId!)
+        .order("order_index", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
 
 export function useProspects() {
   return useQuery({
