@@ -10,6 +10,7 @@ export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type ProspectStatus = Database["public"]["Enums"]["prospect_status"];
 export type PipelineStage = Database["public"]["Tables"]["pipeline_stages"]["Row"];
 
+
 export const STATUSES: ProspectStatus[] = [
   "researched",
   "dm_sent",
