@@ -34,7 +34,7 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
   const [err, setErr] = useState<string | null>(null);
 
   function reset() {
-    setRows([]); setColumns([]); setMapping({}); setFileName(""); setErr(null);
+    setRows([]); setColumns([]); setMapping({}); setFileName(""); setErr(null); setSummary(null);
   }
 
   function autoMap(cols: string[]) {
@@ -87,26 +87,24 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
     }
   }
 
+  const [summary, setSummary] = useState<{ inserted: number; updated: number; skipped: number } | null>(null);
+
   const importMut = useMutation({
     mutationFn: async () => {
       if (!current) throw new Error("No active alliance.");
       const igCol = mapping.ig_url;
       if (!igCol) throw new Error("Map the Instagram URL/handle column.");
 
-      const inserts: Record<string, unknown>[] = [];
+      // 1. Build normalized rows, deduplicating within the file by handle (last one wins).
+      const byHandle = new Map<string, Record<string, unknown>>();
+      let skipped = 0;
       for (const r of rows) {
         const raw = (r[igCol] ?? "").toString().trim();
-        if (!raw) continue;
-        const handle = parseIgHandle(raw) || raw.replace(/^@/, "").trim();
-        if (!handle) continue;
+        if (!raw) { skipped++; continue; }
+        const handle = (parseIgHandle(raw) || raw.replace(/^@/, "").trim()).toLowerCase();
+        if (!handle) { skipped++; continue; }
         const ig_url = raw.startsWith("http") ? raw : `https://instagram.com/${handle}`;
-        const row: Record<string, unknown> = {
-          alliance_id: current.alliance_id,
-          ig_handle: handle,
-          ig_url,
-          created_by: user?.id ?? null,
-          assigned_to: user?.id ?? null,
-        };
+        const row: Record<string, unknown> = { ig_handle: handle, ig_url };
         for (const f of FIELDS) {
           if (f.key === "ig_url") continue;
           const src = mapping[f.key];
@@ -120,16 +118,63 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
             row[f.key] = v;
           }
         }
-        inserts.push(row);
+        // Merge with any earlier row for the same handle (later row's values win on conflict).
+        byHandle.set(handle, { ...(byHandle.get(handle) ?? {}), ...row });
       }
-      if (inserts.length === 0) throw new Error("No valid rows to import.");
-      const { error } = await supabase.from("prospects").insert(inserts as never);
-      if (error) throw error;
-      return inserts.length;
+      if (byHandle.size === 0) throw new Error("No valid rows to import.");
+
+      // 2. Look up existing prospects in this alliance by handle.
+      const handles = Array.from(byHandle.keys());
+      const { data: existing, error: selErr } = await supabase
+        .from("prospects")
+        .select("*")
+        .eq("alliance_id", current.alliance_id)
+        .in("ig_handle", handles);
+      if (selErr) throw selErr;
+      const existingByHandle = new Map((existing ?? []).map((p) => [p.ig_handle.toLowerCase(), p]));
+
+      // 3. Split into inserts (new) and updates (existing — only fill empty fields).
+      const inserts: Record<string, unknown>[] = [];
+      const updates: { id: string; patch: Record<string, unknown> }[] = [];
+      for (const [handle, row] of byHandle) {
+        const ex = existingByHandle.get(handle);
+        if (!ex) {
+          inserts.push({
+            ...row,
+            alliance_id: current.alliance_id,
+            created_by: user?.id ?? null,
+            assigned_to: user?.id ?? null,
+          });
+          continue;
+        }
+        const patch: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (k === "ig_handle" || k === "ig_url") continue;
+          const cur = (ex as Record<string, unknown>)[k];
+          // Only fill empty fields — never clobber existing/enriched data.
+          if (cur === null || cur === undefined || cur === "") {
+            patch[k] = v;
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          updates.push({ id: ex.id, patch });
+        }
+      }
+
+      if (inserts.length > 0) {
+        const { error } = await supabase.from("prospects").insert(inserts as never);
+        if (error) throw error;
+      }
+      for (const u of updates) {
+        const { error } = await supabase.from("prospects").update(u.patch as never).eq("id", u.id);
+        if (error) throw error;
+      }
+
+      return { inserted: inserts.length, updated: updates.length, skipped };
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["prospects"] });
-      reset(); onClose();
+      setSummary(res);
     },
     onError: (e: Error) => setErr(e.message),
   });
@@ -137,7 +182,16 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
   return (
     <Modal open={open} onClose={() => { reset(); onClose(); }} title="IMPORT PROSPECTS">
       <div className="space-y-4">
-        {rows.length === 0 ? (
+        {summary ? (
+          <div className="space-y-2">
+            <div className="mono text-sm text-[var(--accent)]">✓ IMPORT COMPLETE</div>
+            <div className="mono text-xs text-[var(--text-dim)] space-y-0.5">
+              <div>+ {summary.inserted} new prospect{summary.inserted === 1 ? "" : "s"} inserted</div>
+              <div>↻ {summary.updated} existing prospect{summary.updated === 1 ? "" : "s"} updated (empty fields only)</div>
+              {summary.skipped > 0 && <div className="text-[var(--text-muted)]">— {summary.skipped} row{summary.skipped === 1 ? "" : "s"} skipped (no IG handle)</div>}
+            </div>
+          </div>
+        ) : rows.length === 0 ? (
           <div>
             <Label>CSV OR EXCEL FILE</Label>
             <input
@@ -148,6 +202,7 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
             />
             <div className="mono text-[11px] text-[var(--text-muted)] mt-2">
               Required: a column with the Instagram URL or @handle.
+              Existing prospects with the same handle in this alliance will be updated (empty fields only), not duplicated.
             </div>
           </div>
         ) : (
@@ -182,15 +237,21 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
         )}
         {err && <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2">{err}</div>}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={() => { reset(); onClose(); }}>CANCEL</Button>
-          {rows.length > 0 && (
-            <Button
-              variant="primary"
-              onClick={() => importMut.mutate()}
-              disabled={importMut.isPending || !mapping.ig_url}
-            >
-              {importMut.isPending ? "IMPORTING…" : `IMPORT ${rows.length}`}
-            </Button>
+          {summary ? (
+            <Button variant="primary" onClick={() => { reset(); onClose(); }}>DONE</Button>
+          ) : (
+            <>
+              <Button type="button" variant="ghost" onClick={() => { reset(); onClose(); }}>CANCEL</Button>
+              {rows.length > 0 && (
+                <Button
+                  variant="primary"
+                  onClick={() => importMut.mutate()}
+                  disabled={importMut.isPending || !mapping.ig_url}
+                >
+                  {importMut.isPending ? "IMPORTING…" : `IMPORT ${rows.length}`}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
