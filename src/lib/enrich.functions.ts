@@ -13,7 +13,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const JINA = "https://r.jina.ai/";
 const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MIN_TEXT_FOR_HIGH_CONFIDENCE = 600;
+const MIN_TEXT_FOR_HIGH_CONFIDENCE = 250;
 
 async function jinaFetch(url: string): Promise<string> {
   try {
@@ -27,6 +27,32 @@ async function jinaFetch(url: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+function normalizeUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function scrapeWebsiteVariants(rootUrl: string): Promise<{ url: string; text: string }[]> {
+  const normalized = normalizeUrl(rootUrl);
+  if (!normalized) return [];
+  const base = new URL(normalized);
+  const candidates = [
+    base.toString(),
+    new URL("/about", base).toString(),
+    new URL("/about-us", base).toString(),
+    new URL("/contact", base).toString(),
+    new URL("/services", base).toString(),
+    new URL("/team", base).toString(),
+  ];
+  const unique = [...new Set(candidates)];
+  const pages = await Promise.all(unique.map(async (url) => ({ url, text: await jinaFetch(url) })));
+  return pages.filter((p) => p.text.trim().length > 0);
 }
 
 function extractFirstUrl(text: string): string | null {
@@ -119,10 +145,8 @@ export const enrichProspect = createServerFn({ method: "POST" })
 
     // 2. Try to find a website (prefer existing, else extract from IG text)
     let websiteUrl = prospect.website_url || extractFirstUrl(igText);
-    let siteText = "";
-    if (websiteUrl) {
-      siteText = await jinaFetch(websiteUrl);
-    }
+    const sitePages = websiteUrl ? await scrapeWebsiteVariants(websiteUrl) : [];
+    const siteText = sitePages.map((p) => `URL: ${p.url}\n${p.text}`).join("\n\n---\n\n");
 
     // 3. Structure with Gemini Flash Lite (with retry + quality gate)
     const sys = `You are a research assistant. Extract structured prospect data from raw scraped text.
@@ -210,20 +234,41 @@ brokerage=${prospect.brokerage ?? "null"}`;
         if (aiRes.status === 402) throw new Error("AI credits exhausted. Add credits in Settings > Workspace > Usage.");
         throw new Error(`AI call failed [${aiRes.status}]: ${body.slice(0, 200)}`);
       }
+
       const aiJson = await aiRes.json();
       const args = aiJson?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
       if (!args) throw new Error("AI returned no structured data.");
+
       const parsedArgs = parseToolArguments(args);
-      if (!parsedArgs) throw new Error("AI returned malformed data.");
+      if (!parsedArgs) {
+        const retryContent = aiJson?.choices?.[0]?.message?.content;
+        const repaired = parseToolArguments(retryContent);
+        if (!repaired) throw new Error("AI returned malformed data.");
+        const repairedParsed = EnrichSchema.safeParse(repaired);
+        if (!repairedParsed.success) throw new Error("AI returned malformed data.");
+        return repairedParsed.data;
+      }
+
       const parsed = EnrichSchema.safeParse(parsedArgs);
-      if (!parsed.success) throw new Error("AI returned malformed data.");
+      if (!parsed.success) {
+        const retryContent = aiJson?.choices?.[0]?.message?.content;
+        const repaired = parseToolArguments(retryContent);
+        if (!repaired) throw new Error("AI returned malformed data.");
+        const repairedParsed = EnrichSchema.safeParse(repaired);
+        if (!repairedParsed.success) throw new Error("AI returned malformed data.");
+        return repairedParsed.data;
+      }
+
       return parsed.data;
     }
 
     let e = await callEnrichModel();
     const scrapedTextSize = igText.length + siteText.length;
     const score = scoreEnrichment(e);
-    const shouldRetryForQuality = score < 5 && scrapedTextSize >= MIN_TEXT_FOR_HIGH_CONFIDENCE;
+    const isMissingCoreFields = !e.niche || !e.intel_brief || !e.website_gaps;
+    const shouldRetryForQuality =
+      score < 6 || isMissingCoreFields || scrapedTextSize >= MIN_TEXT_FOR_HIGH_CONFIDENCE;
+
     if (shouldRetryForQuality) {
       e = await callEnrichModel(
         "Your prior extraction was too sparse. Re-read all text and provide richer factual detail for niche, intel_brief, and website_gaps when evidence exists.",
