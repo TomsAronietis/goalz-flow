@@ -234,9 +234,11 @@ brokerage=${prospect.brokerage ?? "null"}`;
         if (aiRes.status === 402) throw new Error("AI credits exhausted. Add credits in Settings > Workspace > Usage.");
         throw new Error(`AI call failed [${aiRes.status}]: ${body.slice(0, 200)}`);
       }
+
       const aiJson = await aiRes.json();
       const args = aiJson?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
       if (!args) throw new Error("AI returned no structured data.");
+
       const parsedArgs = parseToolArguments(args);
       if (!parsedArgs) {
         const retryContent = aiJson?.choices?.[0]?.message?.content;
@@ -246,6 +248,7 @@ brokerage=${prospect.brokerage ?? "null"}`;
         if (!repairedParsed.success) throw new Error("AI returned malformed data.");
         return repairedParsed.data;
       }
+
       const parsed = EnrichSchema.safeParse(parsedArgs);
       if (!parsed.success) {
         const retryContent = aiJson?.choices?.[0]?.message?.content;
@@ -255,6 +258,7 @@ brokerage=${prospect.brokerage ?? "null"}`;
         if (!repairedParsed.success) throw new Error("AI returned malformed data.");
         return repairedParsed.data;
       }
+
       return parsed.data;
     }
 
@@ -264,6 +268,7 @@ brokerage=${prospect.brokerage ?? "null"}`;
     const isMissingCoreFields = !e.niche || !e.intel_brief || !e.website_gaps;
     const shouldRetryForQuality =
       score < 6 || isMissingCoreFields || scrapedTextSize >= MIN_TEXT_FOR_HIGH_CONFIDENCE;
+
     if (shouldRetryForQuality) {
       e = await callEnrichModel(
         "Your prior extraction was too sparse. Re-read all text and provide richer factual detail for niche, intel_brief, and website_gaps when evidence exists.",
