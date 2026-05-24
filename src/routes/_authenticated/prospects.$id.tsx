@@ -164,17 +164,16 @@ function ProspectPage() {
         <Link to="/pipeline" className="mono text-xs text-[var(--text-muted)] hover:text-[var(--text)]">← PIPELINE</Link>
         <div className="flex gap-2 items-center flex-wrap justify-end">
           {p.enriched_at && (
-            <Badge variant="success" title={`Enriched ${smartDate(p.enriched_at)}`}>
-              ✓ ENRICHED
-            </Badge>
+            <span title={`Enriched ${smartDate(p.enriched_at)}`}>
+              <Badge variant="success">✓ ENRICHED</Badge>
+            </span>
           )}
           {p.verified_at && (
-            <Badge
-              variant="success"
-              title={`Verified ${smartDate(p.verified_at)}${confidence != null ? ` · ${confidence}% confidence` : ""}`}
-            >
-              ✓✓ VERIFIED{confidence != null ? ` ${confidence}%` : ""}
-            </Badge>
+            <span title={`Verified ${smartDate(p.verified_at)}${confidence != null ? ` · ${confidence}% confidence` : ""}`}>
+              <Badge variant="success">
+                ✓✓ VERIFIED{confidence != null ? ` ${confidence}%` : ""}
+              </Badge>
+            </span>
           )}
           <Button
             variant="primary"
