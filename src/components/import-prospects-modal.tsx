@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
 import { useCurrentAlliance } from "@/hooks/use-alliance";
+import { usePipelineStages } from "@/lib/queries";
 import { Button, Label, Modal, Select } from "@/components/term";
 import { parseIgHandle } from "@/lib/format";
 
@@ -27,6 +28,7 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
   const qc = useQueryClient();
   const { user } = useSession();
   const { current } = useCurrentAlliance();
+  const { data: stages = [] } = usePipelineStages(current?.alliance_id);
   const [rows, setRows] = useState<Row[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
@@ -139,9 +141,11 @@ export function ImportProspectsModal({ open, onClose }: { open: boolean; onClose
       for (const [handle, row] of byHandle) {
         const ex = existingByHandle.get(handle);
         if (!ex) {
+          const defaultStage = stages[0];
           inserts.push({
             ...row,
             alliance_id: current.alliance_id,
+            stage_id: defaultStage?.id ?? null,
             created_by: user?.id ?? null,
             assigned_to: user?.id ?? null,
           });

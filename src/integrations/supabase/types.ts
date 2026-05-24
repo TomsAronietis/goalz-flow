@@ -220,6 +220,41 @@ export type Database = {
           },
         ]
       }
+      pipeline_stages: {
+        Row: {
+          alliance_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          order_index: number
+        }
+        Insert: {
+          alliance_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          order_index?: number
+        }
+        Update: {
+          alliance_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          order_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_stages_alliance_id_fkey"
+            columns: ["alliance_id"]
+            isOneToOne: false
+            referencedRelation: "alliances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -267,6 +302,7 @@ export type Database = {
           phone: string | null
           press_mentions: string[]
           sequence_started_at: string | null
+          stage_id: string | null
           status: Database["public"]["Enums"]["prospect_status"]
           updated_at: string
           verification_confidence: number | null
@@ -300,6 +336,7 @@ export type Database = {
           phone?: string | null
           press_mentions?: string[]
           sequence_started_at?: string | null
+          stage_id?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string
           verification_confidence?: number | null
@@ -333,6 +370,7 @@ export type Database = {
           phone?: string | null
           press_mentions?: string[]
           sequence_started_at?: string | null
+          stage_id?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string
           verification_confidence?: number | null
