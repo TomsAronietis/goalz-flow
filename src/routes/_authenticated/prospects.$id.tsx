@@ -33,6 +33,8 @@ function ProspectPage() {
 
   const [intel, setIntel] = useState(""); const [gaps, setGaps] = useState("");
   const [dm, setDm] = useState(""); const [notes, setNotes] = useState("");
+  const [enrichStartedAt, setEnrichStartedAt] = useState<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
   useEffect(() => {
     if (p) { setIntel(p.intel_brief ?? ""); setGaps(p.website_gaps ?? ""); setDm(p.dm_copy ?? ""); setNotes(p.notes ?? ""); }
   }, [p]);
@@ -125,13 +127,28 @@ function ProspectPage() {
   const enrichFn = useServerFn(enrichProspect);
   const enrich = useMutation({
     mutationFn: async () => {
+      setEnrichStartedAt(Date.now());
       await enrichFn({ data: { prospectId: id } });
     },
     onSuccess: () => {
+      setEnrichStartedAt(null);
+      setElapsedSec(0);
       qc.invalidateQueries({ queryKey: ["prospects"] });
       qc.invalidateQueries({ queryKey: ["prospects", id] });
     },
+    onError: () => {
+      setEnrichStartedAt(null);
+      setElapsedSec(0);
+    },
   });
+
+  useEffect(() => {
+    if (!enrich.isPending || !enrichStartedAt) return;
+    const t = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - enrichStartedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [enrich.isPending, enrichStartedAt]);
 
   const verifyFn = useServerFn(verifyProspect);
   const verify = useMutation({
@@ -157,6 +174,21 @@ function ProspectPage() {
     confidence == null ? "" :
     confidence >= 80 ? "var(--accent)" :
     confidence >= 50 ? "#d4a017" : "var(--danger)";
+
+  const enrichStages = [
+    { name: "Scraping Instagram", eta: 8 },
+    { name: "Scraping website pages", eta: 18 },
+    { name: "Analyzing with AI", eta: 35 },
+    { name: "Quality retry/check", eta: 50 },
+    { name: "Saving enriched profile", eta: 60 },
+  ];
+  const totalEta = enrichStages[enrichStages.length - 1].eta;
+  const currentStage =
+    enrichStages.find((stage, idx) => {
+      const next = enrichStages[idx + 1];
+      return elapsedSec >= stage.eta && (!next || elapsedSec < next.eta);
+    }) ?? enrichStages[0];
+  const etaLeft = Math.max(0, totalEta - elapsedSec);
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
@@ -200,6 +232,27 @@ function ProspectPage() {
         <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2 mb-3">
           {(enrich.error as Error).message}
         </div>
+      )}
+      {enrich.isPending && (
+        <Panel className="mb-3">
+          <PanelHeader>
+            <span>AI RESEARCH STATUS</span>
+            <span className="mono text-[10px] text-[var(--text-muted)]">
+              ELAPSED {elapsedSec}s · EST LEFT {etaLeft}s
+            </span>
+          </PanelHeader>
+          <div className="p-3 space-y-2">
+            <div className="mono text-xs text-[var(--text)]">
+              Current stage: <span className="text-[var(--accent)]">{currentStage.name}</span>
+            </div>
+            <div className="h-2 bg-[var(--surface-2)] border border-[var(--border)]">
+              <div className="h-full bg-[var(--accent)]" style={{ width: `${Math.min(100, Math.floor((elapsedSec / totalEta) * 100))}%` }} />
+            </div>
+            <div className="mono text-[10px] text-[var(--text-muted)]">
+              Stages: {enrichStages.map((s) => s.name).join(" → ")}
+            </div>
+          </div>
+        </Panel>
       )}
       {verify.isError && (
         <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2 mb-3">
