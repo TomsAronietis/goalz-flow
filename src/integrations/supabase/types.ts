@@ -269,6 +269,9 @@ export type Database = {
           sequence_started_at: string | null
           status: Database["public"]["Enums"]["prospect_status"]
           updated_at: string
+          verification_confidence: number | null
+          verification_notes: string | null
+          verified_at: string | null
           website_gaps: string | null
           website_url: string | null
         }
@@ -299,6 +302,9 @@ export type Database = {
           sequence_started_at?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string
+          verification_confidence?: number | null
+          verification_notes?: string | null
+          verified_at?: string | null
           website_gaps?: string | null
           website_url?: string | null
         }
@@ -329,6 +335,9 @@ export type Database = {
           sequence_started_at?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string
+          verification_confidence?: number | null
+          verification_notes?: string | null
+          verified_at?: string | null
           website_gaps?: string | null
           website_url?: string | null
         }
