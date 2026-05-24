@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { enrichProspect } from "@/lib/enrich.functions";
+import { verifyProspect } from "@/lib/verify.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
 import { useCurrentAlliance } from "@/hooks/use-alliance";
@@ -132,6 +133,17 @@ function ProspectPage() {
     },
   });
 
+  const verifyFn = useServerFn(verifyProspect);
+  const verify = useMutation({
+    mutationFn: async () => {
+      await verifyFn({ data: { prospectId: id } });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      qc.invalidateQueries({ queryKey: ["prospects", id] });
+    },
+  });
+
   if (isLoading || !p) {
     return <div className="p-6 mono text-xs text-[var(--text-muted)]">LOADING…</div>;
   }
@@ -140,13 +152,29 @@ function ProspectPage() {
   const totalSteps = followUps.filter((f) => f.sequence_step_id).length;
   const nextStep = followUps.find((f) => !f.completed_at && f.sequence_step_id);
 
+  const confidence = p.verification_confidence ?? null;
+  const confColor =
+    confidence == null ? "" :
+    confidence >= 80 ? "var(--accent)" :
+    confidence >= 50 ? "#d4a017" : "var(--danger)";
+
   return (
     <div className="p-4 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <Link to="/pipeline" className="mono text-xs text-[var(--text-muted)] hover:text-[var(--text)]">← PIPELINE</Link>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap justify-end">
           {p.enriched_at && (
-            <span className="mono text-[10px] text-[var(--text-muted)]">ENRICHED {smartDate(p.enriched_at)}</span>
+            <Badge variant="success" title={`Enriched ${smartDate(p.enriched_at)}`}>
+              ✓ ENRICHED
+            </Badge>
+          )}
+          {p.verified_at && (
+            <Badge
+              variant="success"
+              title={`Verified ${smartDate(p.verified_at)}${confidence != null ? ` · ${confidence}% confidence` : ""}`}
+            >
+              ✓✓ VERIFIED{confidence != null ? ` ${confidence}%` : ""}
+            </Badge>
           )}
           <Button
             variant="primary"
@@ -157,6 +185,15 @@ function ProspectPage() {
           >
             {enrich.isPending ? "ENRICHING…" : (p.enriched_at ? "RE-ENRICH" : "✨ AUTO-ENRICH")}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => verify.mutate()}
+            disabled={verify.isPending || !p.enriched_at}
+            title={p.enriched_at ? "Re-scrape sources & fact-check stored data" : "Run AUTO-ENRICH first"}
+          >
+            {verify.isPending ? "VERIFYING…" : (p.verified_at ? "🔍 RE-VERIFY" : "🔍 VERIFY")}
+          </Button>
           <Button variant="danger" size="sm" onClick={() => confirm("Delete prospect?") && deleteProspect.mutate()}>DELETE</Button>
         </div>
       </div>
@@ -164,6 +201,27 @@ function ProspectPage() {
         <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2 mb-3">
           {(enrich.error as Error).message}
         </div>
+      )}
+      {verify.isError && (
+        <div className="mono text-xs text-[var(--danger)] border border-[var(--danger)] p-2 mb-3">
+          {(verify.error as Error).message}
+        </div>
+      )}
+      {p.verified_at && p.verification_notes && (
+        <Panel className="mb-3">
+          <PanelHeader>
+            <span>VERIFICATION REPORT</span>
+            <span className="mono text-[10px] text-[var(--text-muted)]">
+              {smartDate(p.verified_at)}
+              {confidence != null && (
+                <> · <span style={{ color: confColor }}>{confidence}% CONFIDENCE</span></>
+              )}
+            </span>
+          </PanelHeader>
+          <div className="p-3 mono text-xs text-[var(--text-dim)] whitespace-pre-wrap">
+            {p.verification_notes}
+          </div>
+        </Panel>
       )}
 
       {/* Header strip */}
