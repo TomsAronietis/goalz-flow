@@ -234,6 +234,9 @@ brokerage=${prospect.brokerage ?? "null"}`;
         if (aiRes.status === 402) throw new Error("AI credits exhausted. Add credits in Settings > Workspace > Usage.");
         throw new Error(`AI call failed [${aiRes.status}]: ${body.slice(0, 200)}`);
       }
+      const aiJson = await aiRes.json();
+      const args = aiJson?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+      if (!args) throw new Error("AI returned no structured data.");
 
       const aiJson = await aiRes.json();
       const args = aiJson?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
@@ -258,6 +261,15 @@ brokerage=${prospect.brokerage ?? "null"}`;
         if (!repairedParsed.success) throw new Error("AI returned malformed data.");
         return repairedParsed.data;
       }
+      return parsed.data;
+    }
+
+    let e = await callEnrichModel();
+    const scrapedTextSize = igText.length + siteText.length;
+    const score = scoreEnrichment(e);
+    const isMissingCoreFields = !e.niche || !e.intel_brief || !e.website_gaps;
+    const shouldRetryForQuality =
+      score < 6 || isMissingCoreFields || scrapedTextSize >= MIN_TEXT_FOR_HIGH_CONFIDENCE;
 
       return parsed.data;
     }

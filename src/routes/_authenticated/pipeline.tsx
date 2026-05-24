@@ -9,10 +9,11 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-auth";
 import { useCurrentAlliance } from "@/hooks/use-alliance";
+import { ensurePipelineStages } from "@/lib/pipeline-stages";
 import {
   useFollowUps,
   usePipelineStages,
@@ -41,6 +42,15 @@ function PipelinePage() {
   const [search, setSearch] = useState("");
   const [newStage, setNewStage] = useState("");
   const nav = useNavigate();
+
+  useEffect(() => {
+    async function ensureDefaultStages() {
+      if (!current || stages.length > 0) return;
+      await ensurePipelineStages(current.alliance_id);
+      qc.invalidateQueries({ queryKey: ["pipeline_stages", current.alliance_id] });
+    }
+    ensureDefaultStages();
+  }, [current, stages.length, qc]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -204,6 +214,7 @@ function AddProspectModal({ open, onClose }: { open: boolean; onClose: () => voi
   const qc = useQueryClient();
   const { user } = useSession();
   const { current } = useCurrentAlliance();
+  const { data: stages = [] } = usePipelineStages(current?.alliance_id);
   const [igUrl, setIgUrl] = useState("");
   const [website, setWebsite] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -221,8 +232,11 @@ function AddProspectModal({ open, onClose }: { open: boolean; onClose: () => voi
       if (!current) throw new Error("No active alliance.");
       const handle = parseIgHandle(igUrl);
       if (!handle) throw new Error("Could not parse Instagram handle from URL.");
+      const ensuredStages = stages.length > 0 ? stages : await ensurePipelineStages(current.alliance_id);
+      const defaultStage = ensuredStages[0];
       const { error } = await supabase.from("prospects").insert({
         alliance_id: current.alliance_id,
+        stage_id: defaultStage?.id ?? null,
         ig_handle: handle,
         ig_url: igUrl.trim(),
         website_url: website.trim() || null,
